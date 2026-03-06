@@ -1,0 +1,29 @@
+[gluetun]
+base_url = "http://127.0.0.1:8000"
+status_timeout_seconds = 120
+status_poll_interval_seconds = 2
+
+[runtime]
+binary = "docker"
+worker_image = "gluetun-privado-probe:latest"
+build_if_missing = true
+
+[privado]
+username = "your-privado-username"
+password = "your-privado-password"
+
+[candidates]
+hostnames = []
+
+[benchmark]
+urls = [
+  "https://proof.ovh.net/files/100Mb.dat",
+]
+duration_seconds = 8
+connect_timeout_seconds = 45
+interval_seconds = 21600
+switch_threshold = 1.10
+openvpn_verbosity = 3
+
+[state]
+filepath = "state.json"

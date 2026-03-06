@@ -1,0 +1,14 @@
+services:
+  picker:
+    build:
+      context: ..
+      dockerfile: standalone/controller.Dockerfile
+    container_name: gluetun-picker
+    env_file:
+      - ./stack.env
+    command:
+      - fastest
+    volumes:
+      - ./state:/state
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: "no"
