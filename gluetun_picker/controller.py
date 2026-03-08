@@ -13,6 +13,7 @@ from .privado import fetch_catalog, filter_candidates_by_region, resolve_hostnam
 from .regions import REGION_CUSTOM
 from .runtime import ContainerRuntime
 from .state import AppState, StateStore
+from .telegram import send_notification
 
 
 LOGGER = logging.getLogger(__name__)
@@ -105,7 +106,7 @@ class Controller:
         state.update_results(results)
         self._state_store.save(state)
 
-        return SweepOutcome(
+        outcome = SweepOutcome(
             recommended_hostname=winner.hostname if winner is not None else None,
             applied_hostname=applied_hostname,
             switched=bool(apply and winner is not None and should_switch),
@@ -114,6 +115,8 @@ class Controller:
             candidate_count=benchmark_run.candidate_count,
             results=results,
         )
+        send_notification(self._config.telegram, outcome)
+        return outcome
 
     def benchmark_candidates(self, *, limit: int | None = None) -> BenchmarkRun:
         region, candidates = self.resolve_candidates()

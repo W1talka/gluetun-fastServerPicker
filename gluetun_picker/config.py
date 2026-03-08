@@ -154,6 +154,20 @@ class CatalogConfig:
 
 
 @dataclass(frozen=True)
+class TelegramConfig:
+    bot_token: str = ""
+    chat_id: str = ""
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.bot_token) and bool(self.chat_id)
+
+    def validate(self) -> None:
+        if bool(self.bot_token) != bool(self.chat_id):
+            raise ValueError("telegram.bot_token and telegram.chat_id must be set together")
+
+
+@dataclass(frozen=True)
 class AppConfig:
     gluetun: GluetunConfig
     runtime: RuntimeConfig
@@ -162,6 +176,7 @@ class AppConfig:
     benchmark: BenchmarkConfig
     state: StateConfig
     catalog: CatalogConfig
+    telegram: TelegramConfig = field(default_factory=TelegramConfig)
 
     def validate(self) -> None:
         self.gluetun.validate()
@@ -171,6 +186,7 @@ class AppConfig:
         self.benchmark.validate()
         self.state.validate()
         self.catalog.validate()
+        self.telegram.validate()
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:
@@ -242,6 +258,10 @@ def _load_config_from_file(path: str | Path) -> AppConfig:
             filepath=_resolve_path(catalog_raw.get("filepath"), config_dir, state_filepath.with_name("servers.json")),
             max_age_seconds=float(catalog_raw.get("max_age_seconds", 604800.0)),
         ),
+        telegram=TelegramConfig(
+            bot_token=str(_mapping(raw, "telegram", required=False).get("bot_token", "")),
+            chat_id=str(_mapping(raw, "telegram", required=False).get("chat_id", "")),
+        ),
     )
     config.validate()
     return config
@@ -307,6 +327,10 @@ def load_config_from_env() -> AppConfig:
                 .with_name("servers.json"),
             ),
             max_age_seconds=_float_env("PICKER_CATALOG_MAX_AGE_SECONDS", 604800.0),
+        ),
+        telegram=TelegramConfig(
+            bot_token=os.environ.get("PICKER_TELEGRAM_BOT_TOKEN", ""),
+            chat_id=os.environ.get("PICKER_TELEGRAM_CHAT_ID", ""),
         ),
     )
     config.validate()

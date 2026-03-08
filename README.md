@@ -128,6 +128,17 @@ The Compose file only starts:
 
 - `picker`: the standalone benchmarker, with access to the Docker socket so it can launch temporary probe containers
 
+## Telegram Notifications
+
+Get a message after each benchmark with the result. Set these in your `.env`:
+
+```
+PICKER_TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+PICKER_TELEGRAM_CHAT_ID=your-chat-id
+```
+
+If both are set, the picker sends a short message after each cycle — whether it switched or kept the current server.
+
 ## Notes
 
 - The controller benchmarks candidates sequentially to avoid probe contention.
