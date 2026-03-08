@@ -1,11 +1,14 @@
 services:
   picker:
     build:
-      context: ..
-      dockerfile: standalone/controller.Dockerfile
+      context: .
+      dockerfile: controller.Dockerfile
     container_name: gluetun-picker
+    user: "${PUID:-1000}:${PGID:-1000}"
+    group_add:
+      - "${DOCKER_GID:-985}"
     env_file:
-      - ./stack.env
+      - ./.env
     command:
       - fastest
     volumes:

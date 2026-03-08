@@ -4,6 +4,14 @@ from dataclasses import dataclass
 from typing import Any
 
 
+def bytes_per_second_to_mb_per_second(value: float) -> float:
+    return value / 1_000_000
+
+
+def bytes_per_second_to_mbps(value: float) -> float:
+    return value * 8 / 1_000_000
+
+
 @dataclass(frozen=True)
 class ServerCandidate:
     hostname: str
@@ -77,6 +85,14 @@ class ProbeResult:
     connect_seconds: float = 0.0
     error: str | None = None
 
+    @property
+    def throughput_mb_per_s(self) -> float:
+        return bytes_per_second_to_mb_per_second(self.throughput_bps)
+
+    @property
+    def throughput_mbps(self) -> float:
+        return bytes_per_second_to_mbps(self.throughput_bps)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "hostname": self.hostname,
@@ -85,6 +101,8 @@ class ProbeResult:
             "city": self.city,
             "success": self.success,
             "throughput_bps": self.throughput_bps,
+            "throughput_mb_per_s": self.throughput_mb_per_s,
+            "throughput_mbps": self.throughput_mbps,
             "benchmark_url": self.benchmark_url,
             "bytes_downloaded": self.bytes_downloaded,
             "elapsed_seconds": self.elapsed_seconds,

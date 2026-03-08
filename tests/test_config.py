@@ -42,6 +42,8 @@ class LoadConfigTests(unittest.TestCase):
             config_path = write_config(Path(temp_dir) / "config.toml")
             config = load_config(config_path)
             self.assertEqual(config.state.filepath, Path(temp_dir) / "state.json")
+            self.assertEqual(config.catalog.filepath, Path(temp_dir) / "servers.json")
+            self.assertEqual(config.catalog.max_age_seconds, 604800.0)
 
     def test_load_config_allows_empty_candidate_hostnames(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -86,10 +88,26 @@ class LoadConfigTests(unittest.TestCase):
         self.assertEqual(config.gluetun.base_url, "http://gluetun.example:8000")
         self.assertEqual(config.privado.username, "user")
         self.assertEqual(config.candidates.hostnames, ["us-nyc-001.privado.io", "us-mia-001.privado.io"])
+        self.assertEqual(config.catalog.filepath, Path("/tmp/servers.json"))
         self.assertEqual(
             config.benchmark.urls,
             ["https://example.com/file.bin", "https://example.com/file2.bin"],
         )
+
+    def test_load_config_from_env_allows_catalog_overrides(self) -> None:
+        env = {
+            "OPENVPN_USER": "user",
+            "OPENVPN_PASSWORD": "pass",
+            "PICKER_BENCHMARK_URLS": "https://example.com/file.bin",
+            "PICKER_STATE_FILEPATH": "/tmp/state.json",
+            "PICKER_CATALOG_FILEPATH": "/tmp/catalog/servers.json",
+            "PICKER_CATALOG_MAX_AGE_SECONDS": "3600",
+        }
+        with patch.dict("os.environ", env, clear=True):
+            config = load_config_from_env()
+
+        self.assertEqual(config.catalog.filepath, Path("/tmp/catalog/servers.json"))
+        self.assertEqual(config.catalog.max_age_seconds, 3600.0)
 
 
 if __name__ == "__main__":

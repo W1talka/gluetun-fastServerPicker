@@ -21,6 +21,10 @@ class GluetunClient:
         response = self._request_text("PUT", "/v1/vpn/settings", settings)
         return response.strip()
 
+    def get_public_ip(self) -> str:
+        data = self._request_json("GET", "/v1/publicip/ip")
+        return str(data["public_ip"])
+
     def get_vpn_status(self) -> str:
         data = self._request_json("GET", "/v1/vpn/status")
         return str(data["status"])

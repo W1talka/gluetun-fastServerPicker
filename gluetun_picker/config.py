@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import os
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 import tomllib
 
+from .regions import DEFAULT_REGION, INPUT_REGIONS
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_WORKER_DOCKERFILE = REPO_ROOT / "standalone" / "worker.Dockerfile"
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_WORKER_DOCKERFILE = REPO_ROOT / "worker.Dockerfile"
 
 
 @dataclass(frozen=True)
@@ -77,8 +79,14 @@ class PrivadoConfig:
 @dataclass(frozen=True)
 class CandidatesConfig:
     hostnames: list[str]
+    region: str = DEFAULT_REGION
 
     def validate(self) -> None:
+        if self.region not in INPUT_REGIONS:
+            raise ValueError(
+                "candidates.region must be one of: " + ", ".join(INPUT_REGIONS)
+            )
+
         normalized: set[str] = set()
         for hostname in self.hostnames:
             if not hostname:
@@ -133,6 +141,19 @@ class StateConfig:
 
 
 @dataclass(frozen=True)
+class CatalogConfig:
+    filepath: Path
+    max_age_seconds: float = 604800.0
+
+    def validate(self) -> None:
+        if not self.filepath:
+            raise ValueError("catalog.filepath cannot be empty")
+
+        if self.max_age_seconds <= 0:
+            raise ValueError("catalog.max_age_seconds must be greater than 0")
+
+
+@dataclass(frozen=True)
 class AppConfig:
     gluetun: GluetunConfig
     runtime: RuntimeConfig
@@ -140,6 +161,7 @@ class AppConfig:
     candidates: CandidatesConfig
     benchmark: BenchmarkConfig
     state: StateConfig
+    catalog: CatalogConfig
 
     def validate(self) -> None:
         self.gluetun.validate()
@@ -148,11 +170,12 @@ class AppConfig:
         self.candidates.validate()
         self.benchmark.validate()
         self.state.validate()
+        self.catalog.validate()
 
 
 def load_config(path: str | Path | None = None) -> AppConfig:
     if path is None:
-        default_path = REPO_ROOT / "standalone" / "config.toml"
+        default_path = REPO_ROOT / "config.toml"
         if default_path.exists():
             return _load_config_from_file(default_path)
         return load_config_from_env()
@@ -175,6 +198,8 @@ def _load_config_from_file(path: str | Path) -> AppConfig:
     candidates_raw = _mapping(raw, "candidates")
     benchmark_raw = _mapping(raw, "benchmark")
     state_raw = _mapping(raw, "state")
+    catalog_raw = _mapping(raw, "catalog")
+    state_filepath = _resolve_path(state_raw.get("filepath"), config_dir, config_dir / "state.json")
 
     config = AppConfig(
         gluetun=GluetunConfig(
@@ -200,6 +225,7 @@ def _load_config_from_file(path: str | Path) -> AppConfig:
         ),
         candidates=CandidatesConfig(
             hostnames=[str(hostname).strip().lower() for hostname in candidates_raw.get("hostnames", [])],
+            region=str(candidates_raw.get("region", DEFAULT_REGION)).strip().lower(),
         ),
         benchmark=BenchmarkConfig(
             urls=[str(url).strip() for url in benchmark_raw.get("urls", [])],
@@ -210,7 +236,11 @@ def _load_config_from_file(path: str | Path) -> AppConfig:
             openvpn_verbosity=int(benchmark_raw.get("openvpn_verbosity", 3)),
         ),
         state=StateConfig(
-            filepath=_resolve_path(state_raw.get("filepath"), config_dir, config_dir / "state.json"),
+            filepath=state_filepath,
+        ),
+        catalog=CatalogConfig(
+            filepath=_resolve_path(catalog_raw.get("filepath"), config_dir, state_filepath.with_name("servers.json")),
+            max_age_seconds=float(catalog_raw.get("max_age_seconds", 604800.0)),
         ),
     )
     config.validate()
@@ -256,6 +286,7 @@ def load_config_from_env() -> AppConfig:
         ),
         candidates=CandidatesConfig(
             hostnames=_csv_env("PICKER_CANDIDATE_HOSTNAMES", lowercase=True),
+            region=os.environ.get("PICKER_REGION", DEFAULT_REGION).strip().lower(),
         ),
         benchmark=BenchmarkConfig(
             urls=_csv_env("PICKER_BENCHMARK_URLS"),
@@ -266,15 +297,32 @@ def load_config_from_env() -> AppConfig:
             openvpn_verbosity=_int_env("PICKER_OPENVPN_VERBOSITY", 3),
         ),
         state=StateConfig(
+            filepath=_resolve_path(os.environ.get("PICKER_STATE_FILEPATH"), REPO_ROOT, REPO_ROOT / "state.json"),
+        ),
+        catalog=CatalogConfig(
             filepath=_resolve_path(
-                os.environ.get("PICKER_STATE_FILEPATH"),
+                os.environ.get("PICKER_CATALOG_FILEPATH"),
                 REPO_ROOT,
-                REPO_ROOT / "standalone" / "state.json",
+                _resolve_path(os.environ.get("PICKER_STATE_FILEPATH"), REPO_ROOT, REPO_ROOT / "state.json")
+                .with_name("servers.json"),
             ),
+            max_age_seconds=_float_env("PICKER_CATALOG_MAX_AGE_SECONDS", 604800.0),
         ),
     )
     config.validate()
     return config
+
+
+def override_region(config: AppConfig, region: str | None) -> AppConfig:
+    if region is None:
+        return config
+
+    updated_config = replace(
+        config,
+        candidates=replace(config.candidates, region=region),
+    )
+    updated_config.validate()
+    return updated_config
 
 
 def _mapping(data: dict[str, Any], key: str, *, required: bool = True) -> dict[str, Any]:

@@ -8,6 +8,7 @@ import unittest
 from standalone.gluetun_picker.config import (
     AppConfig,
     BenchmarkConfig,
+    CatalogConfig,
     CandidatesConfig,
     GluetunConfig,
     PrivadoConfig,
@@ -62,13 +63,14 @@ def make_config(state_path: Path) -> AppConfig:
             openvpn_verbosity=3,
         ),
         state=StateConfig(filepath=state_path),
+        catalog=CatalogConfig(filepath=state_path.with_name("servers.json")),
     )
 
 
 def make_catalog() -> list[ServerCandidate]:
     return [
-        ServerCandidate(hostname="old-host", ip="10.0.0.1", country="US", city="New York"),
-        ServerCandidate(hostname="fast-host", ip="10.0.0.2", country="US", city="Miami"),
+        ServerCandidate(hostname="old-host", ip="10.0.0.1", country="USA", city="New York"),
+        ServerCandidate(hostname="fast-host", ip="10.0.0.2", country="USA", city="Miami"),
     ]
 
 
@@ -76,7 +78,7 @@ def make_result(hostname: str, throughput_bps: float, *, success: bool = True, e
     return ProbeResult(
         hostname=hostname,
         ip="10.0.0.1" if hostname == "old-host" else "10.0.0.2",
-        country="US",
+        country="USA",
         city="City",
         success=success,
         throughput_bps=throughput_bps,
@@ -111,6 +113,7 @@ class ControllerTests(unittest.TestCase):
                 candidates=CandidatesConfig(hostnames=[]),
                 benchmark=config.benchmark,
                 state=config.state,
+                catalog=config.catalog,
             )
             controller = Controller(
                 config,
@@ -122,10 +125,11 @@ class ControllerTests(unittest.TestCase):
                     }
                 ),
                 state_store=StateStore(state_path),
-                catalog_fetcher=lambda timeout: make_catalog(),
+                catalog_fetcher=lambda **kwargs: make_catalog(),
             )
 
-            candidates = controller.resolve_candidates()
+            region, candidates = controller.resolve_candidates()
+            self.assertEqual(region, "north_america")
             self.assertEqual([candidate.hostname for candidate in candidates], ["old-host", "fast-host"])
 
     def test_rewrite_settings_for_hostname(self) -> None:
@@ -198,7 +202,7 @@ class ControllerTests(unittest.TestCase):
                 client=client,
                 runtime=runtime,
                 state_store=StateStore(state_path),
-                catalog_fetcher=lambda timeout: make_catalog(),
+                catalog_fetcher=lambda **kwargs: make_catalog(),
             )
 
             outcome = controller.run_cycle(startup=True, apply=True)
@@ -232,7 +236,7 @@ class ControllerTests(unittest.TestCase):
                 client=client,
                 runtime=runtime,
                 state_store=StateStore(state_path),
-                catalog_fetcher=lambda timeout: make_catalog(),
+                catalog_fetcher=lambda **kwargs: make_catalog(),
             )
 
             outcome = controller.run_cycle(startup=False, apply=True)
@@ -264,7 +268,7 @@ class ControllerTests(unittest.TestCase):
                 client=client,
                 runtime=runtime,
                 state_store=StateStore(state_path),
-                catalog_fetcher=lambda timeout: make_catalog(),
+                catalog_fetcher=lambda **kwargs: make_catalog(),
             )
 
             outcome = controller.run_cycle(startup=False, apply=True)

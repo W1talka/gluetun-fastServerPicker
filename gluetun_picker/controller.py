@@ -9,7 +9,8 @@ from typing import Any, Callable
 from .config import AppConfig
 from .gluetun_api import GluetunClient
 from .models import ProbeResult, ProbeSpec, ServerCandidate
-from .privado import fetch_catalog, resolve_hostnames
+from .privado import fetch_catalog, filter_candidates_by_region, resolve_hostnames
+from .regions import REGION_CUSTOM
 from .runtime import ContainerRuntime
 from .state import AppState, StateStore
 
@@ -23,16 +24,32 @@ class SweepOutcome:
     applied_hostname: str | None
     switched: bool
     reason: str
+    region: str
+    candidate_count: int
     results: list[ProbeResult]
 
     def to_dict(self) -> dict[str, Any]:
+        winner = best_result(self.results)
         return {
             "recommended_hostname": self.recommended_hostname,
             "applied_hostname": self.applied_hostname,
             "switched": self.switched,
             "reason": self.reason,
+            "region": self.region,
+            "candidate_count": self.candidate_count,
+            "recommended_throughput_bps": winner.throughput_bps if winner is not None else None,
+            "recommended_throughput_mb_per_s": winner.throughput_mb_per_s if winner is not None else None,
+            "recommended_throughput_mbps": winner.throughput_mbps if winner is not None else None,
             "results": [result.to_dict() for result in self.results],
         }
+
+
+@dataclass(frozen=True)
+class BenchmarkRun:
+    region: str
+    candidate_count: int
+    results: list[ProbeResult]
+    current_hostname: str | None = None
 
 
 class Controller:
@@ -43,7 +60,7 @@ class Controller:
         client: GluetunClient | None = None,
         runtime: ContainerRuntime | None = None,
         state_store: StateStore | None = None,
-        catalog_fetcher: Callable[[float], list[ServerCandidate]] = fetch_catalog,
+        catalog_fetcher: Callable[..., list[ServerCandidate]] = fetch_catalog,
         sleeper: Callable[[float], None] = time.sleep,
     ):
         self._config = config
@@ -53,18 +70,18 @@ class Controller:
         self._catalog_fetcher = catalog_fetcher
         self._sleep = sleeper
 
-    def run_forever(self) -> None:
+    def run_forever(self, *, limit: int | None = None) -> None:
         first_cycle = True
         while True:
-            outcome = self.run_cycle(startup=first_cycle, apply=True)
+            outcome = self.run_cycle(startup=first_cycle, apply=True, limit=limit)
             LOGGER.info("cycle finished: %s", outcome.reason)
             first_cycle = False
             self._sleep(self._config.benchmark.interval_seconds)
 
-    def run_cycle(self, *, startup: bool, apply: bool) -> SweepOutcome:
-        results = self.benchmark_candidates()
-        current_settings = self._client.get_vpn_settings()
-        current_hostname = current_gluetun_hostname(current_settings)
+    def run_cycle(self, *, startup: bool, apply: bool, limit: int | None = None) -> SweepOutcome:
+        benchmark_run = self.benchmark_candidates(limit=limit)
+        results = benchmark_run.results
+        current_hostname = benchmark_run.current_hostname
         winner, should_switch, reason = pick_winner(
             results,
             current_hostname=current_hostname,
@@ -74,7 +91,7 @@ class Controller:
 
         applied_hostname: str | None = current_hostname
         if apply and winner is not None and should_switch:
-            applied_hostname = self.switch_to_hostname(winner.hostname, current_settings=current_settings)
+            applied_hostname = self.switch_to_hostname(winner.hostname)
             LOGGER.info("switched Gluetun to %s", applied_hostname)
         elif winner is not None:
             LOGGER.info("keeping Gluetun on %s: %s", current_hostname, reason)
@@ -93,41 +110,102 @@ class Controller:
             applied_hostname=applied_hostname,
             switched=bool(apply and winner is not None and should_switch),
             reason=reason,
+            region=benchmark_run.region,
+            candidate_count=benchmark_run.candidate_count,
             results=results,
         )
 
-    def benchmark_candidates(self) -> list[ProbeResult]:
-        candidates = self.resolve_candidates()
+    def benchmark_candidates(self, *, limit: int | None = None) -> BenchmarkRun:
+        region, candidates = self.resolve_candidates()
+        current_hostname = self._resolve_current_hostname(candidates)
+
+        if current_hostname:
+            current_candidate = next(
+                (c for c in candidates if c.hostname == current_hostname), None
+            )
+            if current_candidate is not None:
+                candidates = [current_candidate] + [
+                    c for c in candidates if c.hostname != current_hostname
+                ]
+                LOGGER.info(
+                    "current Gluetun server: %s — benchmarking it first as baseline",
+                    current_hostname,
+                )
+            else:
+                LOGGER.info(
+                    "current Gluetun server %s is not in the candidate list",
+                    current_hostname,
+                )
+
+        total = len(candidates)
+        if limit is not None and limit < total:
+            candidates = candidates[:limit]
+        LOGGER.info("benchmarking %d/%d %s", len(candidates), total, describe_scope(region, total))
         results: list[ProbeResult] = []
         for candidate in candidates:
             LOGGER.info("probing %s (%s)", candidate.hostname, candidate.ip)
-            spec = ProbeSpec(
-                candidate=candidate,
-                username=self._config.privado.username,
-                password=self._config.privado.password,
-                benchmark_urls=self._config.benchmark.urls,
-                benchmark_duration_seconds=self._config.benchmark.duration_seconds,
-                connect_timeout_seconds=self._config.benchmark.connect_timeout_seconds,
-                openvpn_verbosity=self._config.benchmark.openvpn_verbosity,
-            )
-            result = self._runtime.run_probe(spec)
+            result = self._run_single_probe(candidate)
             if result.success:
                 LOGGER.info(
-                    "probe success for %s: %.0f B/s via %s",
+                    "probe success for %s: %.2f MB/s (%.2f Mbps) via %s",
                     result.hostname,
-                    result.throughput_bps,
+                    result.throughput_mb_per_s,
+                    result.throughput_mbps,
                     result.benchmark_url,
                 )
             else:
                 LOGGER.warning("probe failed for %s: %s", result.hostname, result.error)
             results.append(result)
-        return results
+        return BenchmarkRun(
+            region=region,
+            candidate_count=len(candidates),
+            results=results,
+            current_hostname=current_hostname,
+        )
 
-    def resolve_candidates(self) -> list[ServerCandidate]:
-        catalog = self._catalog_fetcher(self._config.benchmark.connect_timeout_seconds)
-        if not self._config.candidates.hostnames:
-            return catalog
-        return resolve_hostnames(self._config.candidates.hostnames, catalog)
+    def _resolve_current_hostname(self, catalog: list[ServerCandidate]) -> str | None:
+        try:
+            settings = self._client.get_vpn_settings()
+            hostname = current_gluetun_hostname(settings)
+            if hostname:
+                return hostname
+            public_ip = self._client.get_public_ip()
+            match = _match_by_ip(public_ip, catalog)
+            if match:
+                LOGGER.info("identified current server via public IP %s: %s", public_ip, match.hostname)
+                return match.hostname
+            LOGGER.info("public IP %s did not match any catalog server", public_ip)
+            return None
+        except Exception as exc:
+            LOGGER.warning("could not resolve current Gluetun server: %s", exc)
+            return None
+
+    def _run_single_probe(self, candidate: ServerCandidate) -> ProbeResult:
+        spec = ProbeSpec(
+            candidate=candidate,
+            username=self._config.privado.username,
+            password=self._config.privado.password,
+            benchmark_urls=self._config.benchmark.urls,
+            benchmark_duration_seconds=self._config.benchmark.duration_seconds,
+            connect_timeout_seconds=self._config.benchmark.connect_timeout_seconds,
+            openvpn_verbosity=self._config.benchmark.openvpn_verbosity,
+        )
+        return self._runtime.run_probe(spec)
+
+    def resolve_candidates(self) -> tuple[str, list[ServerCandidate]]:
+        catalog = self._catalog_fetcher(
+            timeout=self._config.benchmark.connect_timeout_seconds,
+            cache_path=self._config.catalog.filepath,
+            max_age_seconds=self._config.catalog.max_age_seconds,
+        )
+        if self._config.candidates.hostnames:
+            return REGION_CUSTOM, resolve_hostnames(self._config.candidates.hostnames, catalog)
+
+        region = self._config.candidates.region
+        candidates = filter_candidates_by_region(catalog, region)
+        if not candidates:
+            raise RuntimeError(f"no Privado servers matched region {region!r}")
+        return region, candidates
 
     def switch_to_hostname(self, hostname: str, *, current_settings: dict[str, Any] | None = None) -> str:
         normalized_hostname = hostname.lower()
@@ -150,6 +228,21 @@ def best_result(results: list[ProbeResult]) -> ProbeResult | None:
         return None
     successful.sort(key=lambda result: result.throughput_bps, reverse=True)
     return successful[0]
+
+
+def fastest_payload(benchmark_run: BenchmarkRun) -> dict[str, Any]:
+    winner = best_result(benchmark_run.results)
+    return {
+        "current_hostname": benchmark_run.current_hostname,
+        "fastest_hostname": winner.hostname if winner is not None else None,
+        "throughput_bps": winner.throughput_bps if winner is not None else None,
+        "throughput_mb_per_s": winner.throughput_mb_per_s if winner is not None else None,
+        "throughput_mbps": winner.throughput_mbps if winner is not None else None,
+        "benchmark_url": winner.benchmark_url if winner is not None else None,
+        "candidate_count": benchmark_run.candidate_count,
+        "region": benchmark_run.region,
+        "results": [result.to_dict() for result in benchmark_run.results],
+    }
 
 
 def pick_winner(
@@ -201,6 +294,14 @@ def current_gluetun_hostname(settings: dict[str, Any]) -> str | None:
     return hostname
 
 
+def _match_by_ip(public_ip: str, catalog: list[ServerCandidate]) -> ServerCandidate | None:
+    exact = next((c for c in catalog if c.ip == public_ip), None)
+    if exact:
+        return exact
+    prefix = public_ip.rsplit(".", 1)[0] + "."
+    return next((c for c in catalog if c.ip.startswith(prefix)), None)
+
+
 def rewrite_settings_for_hostname(settings: dict[str, Any], hostname: str) -> dict[str, Any]:
     updated_settings = deep_copy(settings)
     updated_settings["type"] = "openvpn"
@@ -228,3 +329,11 @@ def deep_copy(value: Any) -> Any:
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+def describe_scope(region: str, candidate_count: int) -> str:
+    noun = "host" if candidate_count == 1 else "hosts"
+    if region == REGION_CUSTOM:
+        return f"{candidate_count} custom {noun}"
+    noun = "server" if candidate_count == 1 else "servers"
+    return f"{region} {noun}"

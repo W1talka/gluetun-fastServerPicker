@@ -14,6 +14,7 @@ password = "your-privado-password"
 
 [candidates]
 hostnames = []
+region = "north_america"
 
 [benchmark]
 urls = [
@@ -27,3 +28,7 @@ openvpn_verbosity = 3
 
 [state]
 filepath = "state.json"
+
+[catalog]
+filepath = "servers.json"
+max_age_seconds = 604800
