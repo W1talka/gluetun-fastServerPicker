@@ -27,6 +27,25 @@ Before benchmarking candidates, the picker queries Gluetun to find the current s
 docker build -f worker.Dockerfile -t gluetun-privado-probe:latest .
 ```
 
+## Gluetun Authentication
+
+Recent Gluetun versions require authentication for the control server API. Add this environment variable to your Gluetun container:
+
+```
+HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"basic","username":"picker","password":"picker"}
+```
+
+Then set matching credentials in the picker's `.env`:
+
+```
+PICKER_GLUETUN_USERNAME=picker
+PICKER_GLUETUN_PASSWORD=picker
+```
+
+Other auth options:
+- **API key**: `{"auth":"apikey","apikey":"your-secret-key"}` — set `PICKER_GLUETUN_HEADERS=Authorization=Bearer your-secret-key` in the picker
+- **No auth** (not recommended): `{"auth":"none"}`
+
 ## Commands
 
 Run one benchmark round without changing Gluetun:
