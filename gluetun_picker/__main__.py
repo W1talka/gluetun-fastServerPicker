@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if payload["fastest_hostname"] is not None else 1
 
     if args.command == "auto":
-        outcome = controller.run_cycle(startup=True, apply=True, limit=limit)
+        outcome = controller.run_cycle(startup=False, apply=True, limit=limit)
         print(json.dumps(outcome.to_dict(), indent=2, sort_keys=True))
         return 0
 

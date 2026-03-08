@@ -139,6 +139,18 @@ PICKER_TELEGRAM_CHAT_ID=your-chat-id
 
 If both are set, the picker sends a short message after each cycle — whether it switched or kept the current server.
 
+## Benchmark URLs
+
+The picker downloads a test file through each VPN server to measure throughput. Set one or more URLs in `PICKER_BENCHMARK_URLS` (comma-separated). Pick a server close to your VPN region for more realistic results:
+
+| URL | Host | Location |
+|-----|------|----------|
+| `http://speedtest.newark.linode.com/100MB-newark.bin` | Linode | Newark, NJ |
+| `https://proof.ovh.net/files/100Mb.dat` | OVH | Europe |
+| `https://speed.hetzner.de/100MB.bin` | Hetzner | Germany |
+
+Default: `http://speedtest.newark.linode.com/100MB-newark.bin`
+
 ## Notes
 
 - The controller benchmarks candidates sequentially to avoid probe contention.
