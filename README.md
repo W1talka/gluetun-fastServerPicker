@@ -65,44 +65,44 @@ Other auth options:
 Run one benchmark round without changing Gluetun:
 
 ```bash
-python3 -m gluetun_picker sweep
+uv run python -m gluetun_picker sweep
 ```
 
 Run a pure benchmark and print the current fastest hostname with throughput in both `MB/s` and `Mbps`:
 
 ```bash
-python3 -m gluetun_picker fastest
+uv run python -m gluetun_picker fastest
 ```
 
 Restrict the benchmark to Europe or North America:
 
 ```bash
-python3 -m gluetun_picker fastest --region europe
-python3 -m gluetun_picker fastest --region north_america
+uv run python -m gluetun_picker fastest --region europe
+uv run python -m gluetun_picker fastest --region north_america
 ```
 
 Limit the number of servers to benchmark (useful for quick testing):
 
 ```bash
-python3 -m gluetun_picker fastest --limit 5
+uv run python -m gluetun_picker fastest --limit 5
 ```
 
 Switch Gluetun to a specific hostname:
 
 ```bash
-python3 -m gluetun_picker switch --hostname us-nyc-001.privado.io
+uv run python -m gluetun_picker switch --hostname us-nyc-001.privado.io
 ```
 
 Run the periodic controller loop:
 
 ```bash
-python3 -m gluetun_picker run
+uv run python -m gluetun_picker run
 ```
 
 Build the worker image explicitly:
 
 ```bash
-python3 -m gluetun_picker build-worker
+uv run python -m gluetun_picker build-worker
 ```
 
 ## Docker Compose

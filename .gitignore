@@ -1,3 +1,5 @@
 stack.env
 .env
 data/*.json
+.venv/
+__pycache__/
