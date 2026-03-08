@@ -35,6 +35,11 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
         return 0 if payload["fastest_hostname"] is not None else 1
 
+    if args.command == "auto":
+        outcome = controller.run_cycle(startup=True, apply=True, limit=limit)
+        print(json.dumps(outcome.to_dict(), indent=2, sort_keys=True))
+        return 0
+
     if args.command == "sweep":
         outcome = controller.run_cycle(startup=True, apply=False, limit=limit)
         print(json.dumps(outcome.to_dict(), indent=2, sort_keys=True))
@@ -68,6 +73,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_region_argument(fastest_parser)
     add_limit_argument(fastest_parser)
+    auto_parser = subparsers.add_parser("auto", help="benchmark once and switch Gluetun if a faster server is found")
+    add_region_argument(auto_parser)
+    add_limit_argument(auto_parser)
     sweep_parser = subparsers.add_parser("sweep", help="benchmark once and print the results without changing Gluetun")
     add_region_argument(sweep_parser)
     add_limit_argument(sweep_parser)
