@@ -297,13 +297,13 @@ def load_config_from_env() -> AppConfig:
             openvpn_verbosity=_int_env("PICKER_OPENVPN_VERBOSITY", 3),
         ),
         state=StateConfig(
-            filepath=_resolve_path(os.environ.get("PICKER_STATE_FILEPATH"), REPO_ROOT, REPO_ROOT / "state.json"),
+            filepath=_resolve_path(os.environ.get("PICKER_STATE_FILEPATH"), REPO_ROOT, REPO_ROOT / "data" / "state.json"),
         ),
         catalog=CatalogConfig(
             filepath=_resolve_path(
                 os.environ.get("PICKER_CATALOG_FILEPATH"),
                 REPO_ROOT,
-                _resolve_path(os.environ.get("PICKER_STATE_FILEPATH"), REPO_ROOT, REPO_ROOT / "state.json")
+                _resolve_path(os.environ.get("PICKER_STATE_FILEPATH"), REPO_ROOT, REPO_ROOT / "data" / "state.json")
                 .with_name("servers.json"),
             ),
             max_age_seconds=_float_env("PICKER_CATALOG_MAX_AGE_SECONDS", 604800.0),
