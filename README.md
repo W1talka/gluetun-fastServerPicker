@@ -29,21 +29,35 @@ docker build -f worker.Dockerfile -t gluetun-privado-probe:latest .
 
 ## Gluetun Authentication
 
-Recent Gluetun versions require authentication for the control server API. Add this environment variable to your Gluetun container:
+Recent Gluetun versions require authentication for the control server API. Generate an API key and add this environment variable to your Gluetun container:
+
+```bash
+# Generate a key
+docker run --rm qmcgaw/gluetun genkey
+```
 
 ```
-HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"basic","username":"picker","password":"picker"}
+HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"apikey","apikey":"your-generated-key"}
 ```
 
-Then set matching credentials in the picker's `.env`:
+Then set the matching key in the picker's `.env`:
 
 ```
-PICKER_GLUETUN_USERNAME=picker
-PICKER_GLUETUN_PASSWORD=picker
+PICKER_GLUETUN_HEADERS=x-api-key=your-generated-key
+```
+
+If you use the [Homepage](https://gethomepage.dev/) dashboard, add the same key to the Gluetun widget:
+
+```yaml
+widget:
+    type: gluetun
+    url: http://your-gluetun-host:8000
+    key: your-generated-key
+    version: 2
 ```
 
 Other auth options:
-- **API key**: `{"auth":"apikey","apikey":"your-secret-key"}` — set `PICKER_GLUETUN_HEADERS=Authorization=Bearer your-secret-key` in the picker
+- **Basic auth**: `{"auth":"basic","username":"user","password":"pass"}` — set `PICKER_GLUETUN_USERNAME` and `PICKER_GLUETUN_PASSWORD` in the picker (note: Homepage's Gluetun widget does not support basic auth)
 - **No auth** (not recommended): `{"auth":"none"}`
 
 ## Commands
