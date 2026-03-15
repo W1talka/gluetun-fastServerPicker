@@ -143,10 +143,11 @@ class Controller:
 
         total = len(candidates)
         if limit is not None and limit < total:
-            if self._config.candidates.random_order and current_hostname and current_candidate is not None:
+            if current_hostname and current_candidate is not None:
                 rest = candidates[1:]
-                random.shuffle(rest)
-                candidates = [candidates[0]] + rest[:limit - 1]
+                if self._config.candidates.random_order:
+                    random.shuffle(rest)
+                candidates = [candidates[0]] + rest[:limit]
             elif self._config.candidates.random_order:
                 random.shuffle(candidates)
                 candidates = candidates[:limit]
