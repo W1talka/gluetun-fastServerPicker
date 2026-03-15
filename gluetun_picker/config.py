@@ -80,6 +80,7 @@ class PrivadoConfig:
 class CandidatesConfig:
     hostnames: list[str]
     region: str = DEFAULT_REGION
+    random_order: bool = True
 
     def validate(self) -> None:
         if self.region not in INPUT_REGIONS:
@@ -242,6 +243,7 @@ def _load_config_from_file(path: str | Path) -> AppConfig:
         candidates=CandidatesConfig(
             hostnames=[str(hostname).strip().lower() for hostname in candidates_raw.get("hostnames", [])],
             region=str(candidates_raw.get("region", DEFAULT_REGION)).strip().lower(),
+            random_order=bool(candidates_raw.get("random_order", True)),
         ),
         benchmark=BenchmarkConfig(
             urls=[str(url).strip() for url in benchmark_raw.get("urls", [])],
@@ -307,6 +309,7 @@ def load_config_from_env() -> AppConfig:
         candidates=CandidatesConfig(
             hostnames=_csv_env("PICKER_CANDIDATE_HOSTNAMES", lowercase=True),
             region=os.environ.get("PICKER_REGION", DEFAULT_REGION).strip().lower(),
+            random_order=_bool_env("PICKER_CANDIDATE_RANDOM", True),
         ),
         benchmark=BenchmarkConfig(
             urls=_csv_env("PICKER_BENCHMARK_URLS"),

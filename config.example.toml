@@ -15,6 +15,7 @@ password = "your-privado-password"
 [candidates]
 hostnames = []
 region = "north_america"
+random_order = true
 
 [benchmark]
 urls = [

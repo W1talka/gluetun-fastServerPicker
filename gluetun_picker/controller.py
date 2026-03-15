@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
+import random
 import time
 from typing import Any, Callable
 
@@ -142,7 +143,15 @@ class Controller:
 
         total = len(candidates)
         if limit is not None and limit < total:
-            candidates = candidates[:limit]
+            if self._config.candidates.random_order and current_hostname and current_candidate is not None:
+                rest = candidates[1:]
+                random.shuffle(rest)
+                candidates = [candidates[0]] + rest[:limit - 1]
+            elif self._config.candidates.random_order:
+                random.shuffle(candidates)
+                candidates = candidates[:limit]
+            else:
+                candidates = candidates[:limit]
         LOGGER.info("benchmarking %d/%d %s", len(candidates), total, describe_scope(region, total))
         results: list[ProbeResult] = []
         for candidate in candidates:
